@@ -1,0 +1,12 @@
+flask
+requests
+beautifulsoup4
+user_agent
+pillow
+transformers
+torch
+fastapi
+uvicorn
+jinja2
+lxml
+pymongo
