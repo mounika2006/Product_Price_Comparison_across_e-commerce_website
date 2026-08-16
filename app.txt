@@ -1,0 +1,267 @@
+import os
+import numpy as np
+from flask import Flask, request, render_template
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
+from werkzeug.utils import secure_filename
+from PIL import Image
+
+# IMPORT AMAZON SCRAPER
+from amazon import get_amazon_price
+
+# ---------------- CONFIG ----------------
+UPLOAD_FOLDER = 'static/uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.secret_key = "super_secret_key"
+
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# ---------------- LOAD MODEL ----------------
+model = MobileNetV2(weights='imagenet')
+
+# ---------------- HELPER FUNCTIONS ----------------
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def classify_image(img_path):
+    img = Image.open(img_path)
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+    img = img.resize((224, 224))
+
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array = preprocess_input(img_array)
+
+    predictions = model.predict(img_array)
+    decoded = decode_predictions(predictions, top=1)
+    return decoded
+
+# ---------------- ROUTES ----------------
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return render_template('index.html', msg="❌ No file uploaded")
+
+    file = request.files['file']
+    if file.filename == '':
+        return render_template('index.html', msg="❌ No image selected")
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # ---------------- STEP 1: Predict item ----------------
+        try:
+            prediction_data = classify_image(filepath)
+            predicted_name = prediction_data[0][0][1].replace("_", " ")
+        except Exception as e:
+            return render_template('index.html', msg=f"❌ Error in classification: {e}")
+
+        # ---------------- STEP 2: Fetch Amazon details ----------------
+        amazon_data = {}
+        try:
+            amazon_data = get_amazon_price(predicted_name)
+        except Exception as e:
+            amazon_data = {
+                "success": False,
+                "price": f"❌ Error: {str(e)}",
+                "link": "",
+                "title": predicted_name,
+                "rating": "N/A",
+                "reviews": "0",
+                "delivery": "N/A",
+                "image": ""
+            }
+
+        return render_template(
+            'index.html',
+            prediction=predicted_name,
+            amazon_data=amazon_data,  # Pass entire dict
+            img_path=filepath,
+            msg="✅ Successfully analyzed image & fetched lowest Amazon price!"
+        )
+
+    return render_template('index.html', msg="❌ Invalid file type. Allowed: png, jpg, jpeg, gif")
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os
+import numpy as np
+from flask import Flask, request, render_template
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
+from werkzeug.utils import secure_filename
+from PIL import Image
+
+# IMPORT SCRAPERS
+from amazon import get_amazon_price
+from flipkart import FlipkartPriceFetcher  # Your Flipkart class
+
+# ---------------- CONFIG ----------------
+UPLOAD_FOLDER = 'static/uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.secret_key = "super_secret_key"
+
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# ---------------- LOAD MODEL ----------------
+model = MobileNetV2(weights='imagenet')
+
+# ---------------- FLIPKART FETCHER (Global instance) ----------------
+FLIPKART_API_KEY = "913baa38df89f798c36d1060941926131a709a8bfa44a2247f47d6dd21e1de17"
+flipkart_fetcher = FlipkartPriceFetcher(FLIPKART_API_KEY)
+
+# ---------------- HELPER FUNCTIONS ----------------
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def classify_image(img_path):
+    img = Image.open(img_path)
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+    img = img.resize((224, 224))
+
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array = preprocess_input(img_array)
+
+    predictions = model.predict(img_array)
+    decoded = decode_predictions(predictions, top=1)
+    return decoded
+
+def get_flipkart_price(product_name: str) -> dict:
+    """Returns Flipkart data in same format as amazon.get_amazon_price()"""
+    try:
+        lowest = flipkart_fetcher.get_lowest_price(product_name)
+        if lowest:
+            return {
+                "success": True,
+                "price": f"₹{lowest['price']:,.0f}",
+                "link": lowest['link'],
+                "title": lowest['name'],
+                "rating": "N/A",  # Flipkart scraper doesn't fetch this
+                "reviews": "N/A",
+                "delivery": "Check Flipkart",
+                "image": ""
+            }
+        else:
+            return {
+                "success": False,
+                "price": "No products found",
+                "link": "",
+                "title": product_name,
+                "rating": "N/A",
+                "reviews": "0",
+                "delivery": "N/A",
+                "image": ""
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "price": f"Error: {str(e)}",
+            "link": "",
+            "title": product_name,
+            "rating": "N/A",
+            "reviews": "0",
+            "delivery": "N/A",
+            "image": ""
+        }
+
+# ---------------- ROUTES ----------------
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return render_template('index.html', msg="❌ No file uploaded")
+
+    file = request.files['file']
+    if file.filename == '':
+        return render_template('index.html', msg="❌ No image selected")
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # ---------------- STEP 1: Predict item ----------------
+        try:
+            prediction_data = classify_image(filepath)
+            predicted_name = prediction_data[0][0][1].replace("_", " ")
+        except Exception as e:
+            return render_template('index.html', msg=f"❌ Error in classification: {e}")
+
+        # ---------------- STEP 2: Fetch Amazon details ----------------
+        amazon_data = {}
+        try:
+            amazon_data = get_amazon_price(predicted_name)
+        except Exception as e:
+            amazon_data = {
+                "success": False,
+                "price": f"❌ Error: {str(e)}",
+                "link": "",
+                "title": predicted_name,
+                "rating": "N/A",
+                "reviews": "0",
+                "delivery": "N/A",
+                "image": ""
+            }
+
+        # ---------------- STEP 3: Fetch Flipkart details ----------------
+        flipkart_data = {}
+        try:
+            flipkart_data = get_flipkart_price(predicted_name)
+        except Exception as e:
+            flipkart_data = {
+                "success": False,
+                "price": f"❌ Error: {str(e)}",
+                "link": "",
+                "title": predicted_name,
+                "rating": "N/A",
+                "reviews": "0",
+                "delivery": "N/A",
+                "image": ""
+            }
+
+        return render_template(
+            'index.html',
+            prediction=predicted_name,
+            amazon_data=amazon_data,
+            flipkart_data=flipkart_data,  # NEW: Pass Flipkart data
+            img_path=filepath,
+            msg="✅ Successfully analyzed image & fetched lowest prices from Amazon + Flipkart!"
+        )
+
+    return render_template('index.html', msg="❌ Invalid file type. Allowed: png, jpg, jpeg, gif")
+
+if __name__ == '__main__':
+    app.run(debug=True)

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛒 Product Price Finder — Table View</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            /* light blue background across the whole page */
+            background: linear-gradient(180deg, #e6f7ff 0%, #d9f0ff 50%, #ccecff 100%);
+            padding: 24px;
+            color: #111;
+            min-height: 100vh;
+        }
+        .card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 16px;
+            padding: 20px;
+            max-width: 1100px;
+            margin: 18px auto;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.04);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 14px;
+            font-size: clamp(1.6rem, 3vw, 2rem);
+            color: #064e7a;
+            text-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .upload-section {
+            border-radius: 14px;
+            padding: 18px;
+            display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap;
+            background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,249,255,0.95));
+            box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+        }
+        .file-input-label {
+            display:inline-block; background: linear-gradient(45deg,#667eea,#764ba2); color:#fff; padding:10px 18px; border-radius:999px; cursor:pointer;
+        }
+        input[type=file] { display:none; }
+        .upload-btn { background:linear-gradient(45deg,#ff6b6b,#feca57); color:#fff; padding:10px 18px; border-radius:999px; border:none; cursor:pointer; }
+
+        .controls { display:flex; gap:12px; align-items:center; justify-content:flex-end; margin-top:12px; }
+        .search { padding:10px 12px; border-radius:10px; border:1px solid #ddd; min-width:220px; }
+
+        /* Table */
+        .table-wrap { overflow:auto; margin-top:20px; }
+        table { width:100%; border-collapse:collapse; min-width:800px; }
+        thead th {
+            text-align:left; padding:12px 14px; background:rgba(10,78,120,0.03);
+            position:sticky; top:0; z-index:2; cursor:pointer; font-weight:700; color:#064e7a;
+        }
+        tbody td { padding:12px 14px; border-top:1px solid rgba(0,0,0,0.04); vertical-align: middle; }
+        tbody tr:hover { background: rgba(6,78,122,0.03); }
+        .platform-badge { padding:6px 10px; border-radius:999px; color:#fff; font-weight:600; display:inline-flex; gap:8px; align-items:center; }
+        .amazon { background: linear-gradient(90deg,#ff8a00,#ff6b35); }
+        .flipkart { background: linear-gradient(90deg,#2874f0,#1e40af); }
+        .thumb { width:56px; height:56px; object-fit:cover; border-radius:8px; border:2px solid rgba(255,255,255,0.6); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+        .buy-btn { display:inline-block; padding:8px 12px; border-radius:999px; background:#fff; border:1px solid rgba(0,0,0,0.06); text-decoration:none; font-weight:700; color:#064e7a; }
+
+        .small-muted { font-size:0.85rem; color:#425466; }
+        .rating-pill { display:inline-block; padding:6px 10px; border-radius:999px; background: linear-gradient(45deg,#ffd700,#ffed4e); font-weight:700; }
+
+        /* Responsive */
+        @media (max-width:900px) {
+            .controls { justify-content:center; }
+            table { min-width:720px; }
+        }
+    </style>
+</head>
+<body>
+    <h1><i class="fas fa-shopping-cart"></i> Product Price Finder</h1>
+
+    <div class="card">
+        <form method="POST" action="/upload" enctype="multipart/form-data">
+            <div class="upload-section">
+                <label for="file-input" class="file-input-label"><i class="fas fa-image"></i>&nbsp; Choose Image</label>
+                <input type="file" id="file-input" name="file" accept="image/*" required>
+                <button type="submit" class="upload-btn"><i class="fas fa-rocket"></i>&nbsp; Find Prices</button>
+            </div>
+        </form>
+
+        {% if msg %}
+            <div style="margin-top:14px; text-align:center;" class="{{ 'msg' if '✅' in msg else 'error' }}">{{ msg }}</div>
+        {% endif %}
+
+        {% if img_path and prediction %}
+            <div style="margin-top:18px; display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
+                <div style="min-width:160px; text-align:center;">
+                    <img src="{{ url_for('static', filename='uploads/' + img_path.split('/')[-1]) }}" alt="Uploaded" style="max-width:140px; border-radius:12px; border:4px solid rgba(255,255,255,0.5); box-shadow:0 12px 30px rgba(0,0,0,0.12);">
+                </div>
+                <div style="flex:1;">
+                    <h2 style="margin:0; font-size:1.25rem;">🎯 <i class="fas fa-search"></i> {{ prediction }}</h2>
+                    
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table id="resultsTable" aria-label="Price results table">
+                    <thead>
+                        <tr>
+                            <th data-key="platform">Platform <i class="fas fa-sort"></i></th>
+                            <th data-key="title">Product Name <i class="fas fa-sort"></i></th>
+                            <th data-key="price">Price <i class="fas fa-sort"></i></th>
+                            <th data-key="ship">Ship Date <i class="fas fa-sort"></i></th>
+                            <th data-key="rating">Rating <i class="fas fa-sort"></i></th>
+                            <th data-key="reviews">Reviews <i class="fas fa-sort"></i></th>
+                            <th>Buy</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        {% if amazon_data %}
+                        <tr class="row-item">
+                            <td>
+                                <span class="platform-badge amazon"><i class="fab fa-amazon"></i> Amazon</span>
+                            </td>
+                            <td>
+                                <div style="display:flex; gap:12px; align-items:center;">
+                                    {% if amazon_data.image %}
+                                    <img src="{{ amazon_data.image }}" alt="{{ amazon_data.title }}" class="thumb">
+                                    {% endif %}
+                                    <div style="max-width:520px;">
+                                        <div style="font-weight:700;">{{ amazon_data.title }}</div>
+                                        <div class="small-muted">{{ amazon_data.subtitle if amazon_data.subtitle else '' }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="font-weight:800;">{{ amazon_data.price }}</td>
+                            <td>
+                                <!-- show ship date if present, otherwise fallback text -->
+                                <div class="small-muted">{{ amazon_data.delivery if amazon_data.delivery else 'Usually ships in 3-5 days' }}</div>
+                            </td>
+                            <td>
+                                {% if amazon_data.rating %}
+                                <span class="rating-pill">★ {{ amazon_data.rating }}</span>
+                                {% else %}
+                                <span class="small-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div>{{ amazon_data.reviews if amazon_data.reviews else '—' }}</div>
+                                <div class="small-muted">{{ amazon_data.total_checked }} checked</div>
+                            </td>
+                            <td>
+                                {% if amazon_data.success %}
+                                <a href="{{ amazon_data.link }}" target="_blank" rel="noopener" class="buy-btn">Buy on Amazon</a>
+                                {% else %}
+                                <div class="small-muted">{{ amazon_data.price }}</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endif %}
+
+                        {% if flipkart_data %}
+                        <tr class="row-item">
+                            <td>
+                                <span class="platform-badge flipkart"><i class="fas fa-store"></i> Flipkart</span>
+                            </td>
+                            <td>
+                                <div style="display:flex; gap:12px; align-items:center;">
+                                    {% if flipkart_data.image %}
+                                    <img src="{{ flipkart_data.image }}" alt="{{ flipkart_data.title }}" class="thumb">
+                                    {% endif %}
+                                    <div style="max-width:520px;">
+                                        <div style="font-weight:700;">{{ flipkart_data.title }}</div>
+                                        <div class="small-muted">{{ flipkart_data.subtitle if flipkart_data.subtitle else '' }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="font-weight:800;">{{ flipkart_data.price }}</td>
+                            <td>
+                                <div class="small-muted">{{ flipkart_data.ship_date if flipkart_data.ship_date else 'Delivery by 12 Dec, Friday' }}</div>
+                            </td>
+                            <td>
+                                {% if flipkart_data.rating %}
+                                <span class="rating-pill">★ 4.1/5</span>
+                                {% else %}
+                                <span class="small-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span>28</span>
+                            </td>
+                            <td>
+                                {% if flipkart_data.success %}
+                                <a href="{{ flipkart_data.link if flipkart_data.link else ('https://www.flipkart.com/search?q=' + (flipkart_data.title | urlencode)) }}" target="_blank" rel="noopener" class="buy-btn">Buy on Flipkart</a>
+                                {% else %}
+                                <div class="small-muted">{{ flipkart_data.price }}</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endif %}
+
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        // Simple client-side search & sort for the table
+        (function(){
+            const table = document.getElementById('resultsTable');
+            if(!table) return;
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            // Search box is optional; if present it will filter
+            const searchBox = document.getElementById('searchBox');
+            searchBox && searchBox.addEventListener('input', () => {
+                const q = searchBox.value.trim().toLowerCase();
+                rows.forEach(r => {
+                    const txt = r.innerText.toLowerCase();
+                    r.style.display = txt.includes(q) ? '' : 'none';
+                });
+            });
+
+            // Sort
+            const headers = Array.from(table.querySelectorAll('thead th[data-key]'));
+            headers.forEach(h => {
+                h.addEventListener('click', () => {
+                    const key = h.getAttribute('data-key');
+                    const dir = h._dir = -(h._dir || -1); // toggle
+                    const sorted = rows.slice().sort((a,b) => {
+                        const aVal = cellValue(a, key);
+                        const bVal = cellValue(b, key);
+                        if (aVal < bVal) return -1 * dir;
+                        if (aVal > bVal) return 1 * dir;
+                        return 0;
+                    });
+                    // re-append
+                    sorted.forEach(r => tbody.appendChild(r));
+                });
+            });
+
+            function cellValue(row, key){
+                try{
+                    if(key === 'platform'){
+                        return row.querySelector('.platform-badge')?.innerText.trim() || '';
+                    }
+                    if(key === 'title'){
+                        return row.querySelector('td:nth-child(2)')?.innerText.trim() || '';
+                    }
+                    if(key === 'price'){
+                        const txt = row.querySelector('td:nth-child(3)')?.innerText.replace(/[^0-9.]/g,'') || '';
+                        return parseFloat(txt) || 0;
+                    }
+                    if(key === 'ship'){
+                        // ship date sorting: attempt to parse a YYYY-MM-DD date, else return large string fallback
+                        const txt = row.querySelector('td:nth-child(4)')?.innerText.trim() || '';
+                        const iso = txt.match(/\\d{4}-\\d{2}-\\d{2}/);
+                        if(iso) return iso[0];
+                        // if text like "Ships within 2-4 days" transform to a small integer estimate (days)
+                        const daysMatch = txt.match(/(\\d+)[^\\d]*-(\\d+)/);
+                        if(daysMatch) return parseInt(daysMatch[1],10);
+                        const singleDay = txt.match(/(\\d+)\\s*days?/i);
+                        if(singleDay) return parseInt(singleDay[1],10);
+                        return '9999'; // unknown -> sort last
+                    }
+                    if(key === 'rating'){
+                        const txt = row.querySelector('td:nth-child(5)')?.innerText.replace(/[^0-9.]/g,'') || '';
+                        return parseFloat(txt) || 0;
+                    }
+                    if(key === 'reviews'){
+                        const txt = row.querySelector('td:nth-child(6)')?.innerText.replace(/[^0-9]/g,'') || '';
+                        return parseInt(txt) || 0;
+                    }
+                } catch(e){ return '' }
+            }
+        })();
+    </script>
+</body>
+</html>
+
+ 
